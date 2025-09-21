@@ -107,6 +107,22 @@ struct ContentView: View {
                         .environmentObject(vm)
                     }
                 }
+                .confirmationDialog(
+                    selectedContainerID.map { "Delete container '\($0)'?" } ?? "Delete container?",
+                    isPresented: $isConfirmingDeleteContainer,
+                    titleVisibility: .visible
+                ) {
+                    Button("Delete", role: .destructive) {
+                        if let id = selectedContainerID {
+                            Task {
+                                await vm.deleteContainer(id)
+                            }
+                        }
+                    }
+                    Button("Cancel", role: .cancel) { }
+                } message: {
+                    Text("This action cannot be undone.")
+                }
 
             case .images:
                 List(vm.images, selection: $selectedImageID) { image in
@@ -156,12 +172,22 @@ struct ContentView: View {
                     )
                     .environmentObject(vm)
                 }
-                
-            DeleteVolumeConfirmationDialog(
-                isPresented: $isConfirmingDeleteVolume,
-                volumeID: selectedVolumeID
-            )
-            .environmentObject(vm)
+                .confirmationDialog(
+                    selectedVolumeID.map { "Delete volume '\($0)'?" } ?? "Delete volume?",
+                    isPresented: $isConfirmingDeleteVolume,
+                    titleVisibility: .visible
+                ) {
+                    Button("Delete", role: .destructive) {
+                        if let id = selectedVolumeID {
+                            Task {
+                                await vm.deleteVolume(name: id)
+                            }
+                        }
+                    }
+                    Button("Cancel", role: .cancel) { }
+                } message: {
+                    Text("This action cannot be undone.")
+                }
             }
         } detail: {
             // Column 3: Details
@@ -193,13 +219,6 @@ struct ContentView: View {
                 }
             }
         }
-        
-        DeleteContainerConfirmationDialog(
-            isPresented: $isConfirmingDeleteContainer,
-            containerID: selectedContainerID
-        )
-        .environmentObject(vm)
-        
         .onAppear { vm.startPolling(interval: 1.0) }
         .onDisappear { vm.stopPolling(); NSApp.setActivationPolicy(.accessory) }
     }

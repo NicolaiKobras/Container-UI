@@ -113,11 +113,19 @@ struct ContainerDetailView: View {
             Spacer()
         }
         .padding(15)
-        
-        DeleteContainerConfirmationDialog(
+        .confirmationDialog(
+            "Delete container '\(container.id)'?",
             isPresented: $isConfirmingDelete,
-            containerID: container.id
-        )
-        .environmentObject(vm)
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                Task {
+                    await vm.deleteContainer(container.id)
+                }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("This action cannot be undone.")
+        }
     }
 }
