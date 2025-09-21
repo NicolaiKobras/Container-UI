@@ -4,6 +4,7 @@ struct ContainerDetailView: View {
     let container: ContainerModel
     var onSelectVolume: (String) -> Void = { _ in }
     @StateObject private var vm = ContainerViewModel()
+    @State private var isConfirmingDelete = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -51,7 +52,7 @@ struct ContainerDetailView: View {
                     .clipShape(RoundedCorners(tl: 0, tr: 10, bl: 0, br: 10))
                 }
                 Button(action: {
-                    Task { await vm.deleteContainer(container.id) }
+                    isConfirmingDelete = true
                 }) {
                     Image(systemName: "trash").foregroundStyle(Color.white)
                 }
@@ -112,5 +113,11 @@ struct ContainerDetailView: View {
             Spacer()
         }
         .padding(15)
+        
+        DeleteContainerConfirmationDialog(
+            isPresented: $isConfirmingDelete,
+            containerID: container.id
+        )
+        .environmentObject(vm)
     }
 }

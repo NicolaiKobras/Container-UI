@@ -14,6 +14,7 @@ struct ContentView: View {
     @State private var newVolumeOptionsText: String = "" // comma-separated
     @State private var newVolumeLabelsText: String = "" // comma-separated key=value
     @State private var isConfirmingDeleteVolume: Bool = false
+    @State private var isConfirmingDeleteContainer: Bool = false
     
     // Add Container UI state
     @State private var isPresentingAddContainer: Bool = false
@@ -65,7 +66,10 @@ struct ContentView: View {
                         Button("Stop") { Task { await vm.stopContainer(container.id) } }
                         Button("Restart") { Task { await vm.restartContainer(container.id) } }
                         Divider()
-                        Button(role: .destructive) { Task { await vm.deleteContainer(container.id) } } label: { Text("Delete") }
+                        Button(role: .destructive) { 
+                            selectedContainerID = container.id
+                            isConfirmingDeleteContainer = true 
+                        } label: { Text("Delete") }
                     }
                 }
                 .navigationTitle("Containers")
@@ -78,164 +82,29 @@ struct ContentView: View {
                     Button("Refresh") { vm.refresh() }
                 }
                 .sheet(isPresented: $isPresentingAddContainer) {
-                    VStack(alignment: .center) {
-                        Text("Create Container").font(.title2).bold()
-                        Spacer()
-                        Form {
-                            Spacer()
-                            Section("Name") {
-                                TextField("", text: $newContainerName)
-                            }
-                            Spacer()
-                            Section("Image") {
-                                
-                                if useCustomImage {
-                                    TextField("",text: $selectedImageRef)
-                                } else {
-                                    Picker("",selection: $selectedImageRef) {
-                                        Text("Select…").tag("")
-                                        ForEach(vm.images.map { $0.id }, id: \.self) { ref in
-                                            Text(ref).tag(ref)
-                                        }
-                                    }
-                                }
-                                Toggle("Enter custom image", isOn: $useCustomImage)
-                            }
-                            Spacer()
-                            Section("Volumes") {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    // Picker-like Menu for multi-select volumes
-                                    Menu {
-                                        ForEach(vm.volumes.map { $0.id }, id: \.self) { v in
-                                            Button(action: {
-                                                if selectedVolumeTargets.keys.contains(v) {
-                                                    selectedVolumeTargets.removeValue(forKey: v)
-                                                } else {
-                                                    // default suggested target path
-                                                    let suggested = "/data/\(v)"
-                                                    selectedVolumeTargets[v] = suggested
-                                                }
-                                            }) {
-                                                HStack {
-                                                    Text(v)
-                                                    Spacer()
-                                                    if selectedVolumeTargets.keys.contains(v) {
-                                                        Image(systemName: "checkmark")
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    } label: {
-                                        HStack {
-                                            Text(selectedVolumeTargets.isEmpty ? "Select Volumes…" : "Selected (\(selectedVolumeTargets.count))")
-                                                .foregroundStyle(.primary)
-                                            Spacer()
-                                            Image(systemName: "chevron.down").foregroundStyle(.secondary)
-                                        }
-                                        .padding(6)
-                                        .background(RoundedRectangle(cornerRadius: 6).fill(Color.white))
-                                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.gray.opacity(0.2)))
-                                    }
-
-                                    // For each selected volume, allow editing its target path
-                                    if !selectedVolumeTargets.isEmpty {
-                                        VStack(alignment: .leading, spacing: 6) {
-                                            ForEach(selectedVolumeTargets.keys.sorted(), id: \.self) { v in
-                                                HStack(alignment: .firstTextBaseline) {
-                                                    Text(v)
-                                                        .font(.subheadline)
-                                                    TextField("/path/in/container", text: Binding(
-                                                        get: { selectedVolumeTargets[v] ?? "" },
-                                                        set: { selectedVolumeTargets[v] = $0 }
-                                                    ))
-                                                    .textFieldStyle(.roundedBorder)
-                                                    .frame(minWidth: 220)
-                                                    Button(role: .destructive) {
-                                                        selectedVolumeTargets.removeValue(forKey: v)
-                                                    } label: {
-                                                        Image(systemName: "xmark.circle").foregroundStyle(.red)
-                                                    }
-                                                    .buttonStyle(.plain)
-                                                }
-                                            }
-                                        }
-                                        .padding(.top, 4)
-                                    }
-
-                                    HStack {
-                                        Spacer()
-                                        Button {
-                                            isPresentingInlineCreateVolume = true
-                                        } label: {
-                                            Label("Create New Volume", systemImage: "plus.circle")
-                                        }
-                                    }
-                                }
-                            }
-                            Spacer()
-                        }
-                        Spacer()
-                        HStack {
-                            Spacer()
-                            Button("Cancel") { isPresentingAddContainer = false }
-                            Button("Create") {
-                                let name = newContainerName.trimmingCharacters(in: .whitespaces)
-                                let image = selectedImageRef.trimmingCharacters(in: .whitespaces)
-                                Task {
-                                    await vm.createContainer(name: name, image: image, volumeMappings: selectedVolumeTargets)
-                                    // reset and dismiss
-                                    newContainerName = ""
-                                    useCustomImage = false
-                                    selectedImageRef = ""
-                                    selectedVolumeTargets.removeAll()
-                                    isPresentingAddContainer = false
-                                }
-                            }
-                            .disabled(newContainerName.trimmingCharacters(in: .whitespaces).isEmpty || (useCustomImage ? selectedImageRef.trimmingCharacters(in: .whitespaces).isEmpty : selectedImageRef.isEmpty))
-                        }
-                        .padding([.horizontal, .bottom])
-                    }
-                    .frame(minWidth: 520, minHeight: 520)
-                    .padding()
+                    AddContainerDialog(
+                        isPresented: $isPresentingAddContainer,
+                        newContainerName: $newContainerName,
+                        useCustomImage: $useCustomImage,
+                        selectedImageRef: $selectedImageRef,
+                        selectedVolumeTargets: $selectedVolumeTargets,
+                        isPresentingInlineCreateVolume: $isPresentingInlineCreateVolume
+                    )
+                    .environmentObject(vm)
                     .sheet(isPresented: $isPresentingInlineCreateVolume) {
                         // Reuse existing volume create UI by presenting the same add volume sheet
-                        VStack(alignment: .leading) {
-                            Text("Create Volume").font(.title2).bold()
-                            Form {
-                                Section(header: Text("Required")) {
-                                    TextField("Name", text: $newVolumeName)
-                                }
-                                Section(header: Text("Optional")) {
-                                    TextField("Size (e.g., 1G, 512MB)", text: $newVolumeSize)
-                                    TextField("Options (comma-separated)", text: $newVolumeOptionsText)
-                                    TextField("Labels (comma-separated key=value)", text: $newVolumeLabelsText)
-                                }
+                        AddVolumeDialog(
+                            isPresented: $isPresentingInlineCreateVolume,
+                            newVolumeName: $newVolumeName,
+                            newVolumeSize: $newVolumeSize,
+                            newVolumeOptionsText: $newVolumeOptionsText,
+                            newVolumeLabelsText: $newVolumeLabelsText,
+                            onVolumeCreated: { volumeName in
+                                // Auto-select the created volume
+                                selectedVolumeTargets[volumeName] = "/data/\(volumeName)"
                             }
-                            HStack {
-                                Spacer()
-                                Button("Cancel") { isPresentingInlineCreateVolume = false }
-                                Button("Create") {
-                                    let opts = newVolumeOptionsText.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-                                    let labels = newVolumeLabelsText.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-                                    let size = newVolumeSize.trimmingCharacters(in: .whitespaces)
-                                    Task {
-                                        await vm.createVolume(name: newVolumeName, size: size.isEmpty ? nil : size, options: opts, labels: labels)
-                                        // if created, auto-select it
-                                        selectedVolumeTargets[newVolumeName] = "/data/\(newVolumeName)"
-                                        // reset and dismiss
-                                        newVolumeName = ""
-                                        newVolumeSize = ""
-                                        newVolumeOptionsText = ""
-                                        newVolumeLabelsText = ""
-                                        isPresentingInlineCreateVolume = false
-                                    }
-                                }
-                                .disabled(newVolumeName.trimmingCharacters(in: .whitespaces).isEmpty)
-                            }
-                            .padding([.horizontal, .bottom])
-                        }
-                        .frame(minWidth: 420, minHeight: 360)
-                        .padding()
+                        )
+                        .environmentObject(vm)
                     }
                 }
 
@@ -278,60 +147,21 @@ struct ContentView: View {
                     .disabled(selectedVolumeID == nil)
                 }
                 .sheet(isPresented: $isPresentingAddVolume) {
-                    VStack(alignment: .leading) {
-                        Text("Create Volume").font(.title2).bold()
-                        Form {
-                            Section(header: Text("Required")) {
-                                TextField("Name", text: $newVolumeName)
-                            }
-                            Section(header: Text("Optional")) {
-                                TextField("Size (e.g., 1G, 512MB)", text: $newVolumeSize)
-                                TextField("Options (comma-separated)", text: $newVolumeOptionsText)
-                                TextField("Labels (comma-separated key=value)", text: $newVolumeLabelsText)
-                            }
-                        }
-                        HStack {
-                            Spacer()
-                            Button("Cancel") {
-                                isPresentingAddVolume = false
-                            }
-                            Button("Create") {
-                                let opts = newVolumeOptionsText.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-                                let labels = newVolumeLabelsText.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-                                let size = newVolumeSize.trimmingCharacters(in: .whitespaces)
-                                Task {
-                                    await vm.createVolume(name: newVolumeName, size: size.isEmpty ? nil : size, options: opts, labels: labels)
-                                    newVolumeName = ""
-                                    newVolumeSize = ""
-                                    newVolumeOptionsText = ""
-                                    newVolumeLabelsText = ""
-                                    isPresentingAddVolume = false
-                                }
-                                
-                            }
-                            .disabled(newVolumeName.trimmingCharacters(in: .whitespaces).isEmpty)
-                        }
-                        .padding([.horizontal, .bottom])
-                    }
-                    .frame(minWidth: 420, minHeight: 360)
-                    .padding()
+                    AddVolumeDialog(
+                        isPresented: $isPresentingAddVolume,
+                        newVolumeName: $newVolumeName,
+                        newVolumeSize: $newVolumeSize,
+                        newVolumeOptionsText: $newVolumeOptionsText,
+                        newVolumeLabelsText: $newVolumeLabelsText
+                    )
+                    .environmentObject(vm)
                 }
-                .confirmationDialog(
-                    selectedVolumeID.map { "Delete volume '\($0)'?" } ?? "Delete volume?",
-                    isPresented: $isConfirmingDeleteVolume,
-                    titleVisibility: .visible
-                ) {
-                    Button("Delete", role: .destructive) {
-                        if let id = selectedVolumeID {
-                            Task {
-                                await vm.deleteVolume(name: id)
-                            }
-                        }
-                    }
-                    Button("Cancel", role: .cancel) { }
-                } message: {
-                    Text("This action cannot be undone.")
-                }
+                
+            DeleteVolumeConfirmationDialog(
+                isPresented: $isConfirmingDeleteVolume,
+                volumeID: selectedVolumeID
+            )
+            .environmentObject(vm)
             }
         } detail: {
             // Column 3: Details
@@ -363,6 +193,13 @@ struct ContentView: View {
                 }
             }
         }
+        
+        DeleteContainerConfirmationDialog(
+            isPresented: $isConfirmingDeleteContainer,
+            containerID: selectedContainerID
+        )
+        .environmentObject(vm)
+        
         .onAppear { vm.startPolling(interval: 1.0) }
         .onDisappear { vm.stopPolling(); NSApp.setActivationPolicy(.accessory) }
     }
